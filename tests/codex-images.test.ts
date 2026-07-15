@@ -260,6 +260,61 @@ test("CodexImagesClient treats a monthly-limit message as terminal even with a g
 	assert.equal(transport.requests.length, 1);
 });
 
+test("CodexImagesClient classifies terminal signals before retrying a 503", async (t) => {
+	const cases = [
+		{
+			name: "provider limit in type",
+			payload: {
+				error: {
+					code: "rate_limit_exceeded",
+					type: "usage_limit_reached",
+				},
+			},
+			expectedCode: "USAGE_LIMIT",
+		},
+		{
+			name: "moderation in type",
+			payload: {
+				error: {
+					code: "invalid_request_error",
+					type: "moderation_blocked",
+				},
+			},
+			expectedCode: "MODERATION_BLOCKED",
+		},
+		{
+			name: "safety signal in message",
+			payload: {
+				error: {
+					code: "invalid_request_error",
+					message: "Blocked by a safety check",
+				},
+			},
+			expectedCode: "MODERATION_BLOCKED",
+		},
+	] as const;
+
+	for (const testCase of cases) {
+		await t.test(testCase.name, async () => {
+			const transport = new FakeTransport(
+				jsonResponse(503, testCase.payload),
+				jsonResponse(200, { data: [{ b64_json: "dW51c2Vk" }] }),
+			);
+			const client = new CodexImagesClient(transport, {
+				sleep: async () => undefined,
+			});
+
+			await assert.rejects(
+				client.generate({ prompt: "fox", quality: "auto", size: "auto" }, auth),
+				(error: unknown) =>
+					error instanceof ExtensionError &&
+					error.code === testCase.expectedCode,
+			);
+			assert.equal(transport.requests.length, 1);
+		});
+	}
+});
+
 test("CodexImagesClient retries a non-terminal 429 using retry-after-ms", async () => {
 	const transport = new FakeTransport(
 		jsonResponse(
@@ -282,18 +337,85 @@ test("CodexImagesClient retries a non-terminal 429 using retry-after-ms", async 
 	assert.deepEqual(sleeps, [25]);
 });
 
-test("CodexImagesClient retries selected explicit unavailable responses only", async () => {
+test("CodexImagesClient retries selected transient gateway statuses", async (t) => {
+	for (const status of [502, 503, 504, 520, 522, 523, 524]) {
+		await t.test(String(status), async () => {
+			const transport = new FakeTransport(
+				jsonResponse(status, {}),
+				jsonResponse(200, { data: [{ b64_json: "aW1hZ2U=" }] }),
+			);
+			const client = new CodexImagesClient(transport, {
+				sleep: async () => undefined,
+			});
+
+			await client.generate(
+				{ prompt: "fox", quality: "auto", size: "auto" },
+				auth,
+			);
+
+			assert.equal(transport.requests.length, 2);
+		});
+	}
+});
+
+test("CodexImagesClient retries a Cloudflare 520 image edit once", async () => {
 	const transport = new FakeTransport(
-		jsonResponse(503, { error: { code: "temporarily_unavailable" } }),
-		jsonResponse(200, { data: [{ b64_json: "aW1hZ2U=" }] }),
+		{ status: 520, headers: {}, body: "<html>Cloudflare 520</html>" },
+		jsonResponse(200, { data: [{ b64_json: "ZWRpdGVk" }] }),
 	);
+	const sleeps: number[] = [];
 	const client = new CodexImagesClient(transport, {
-		sleep: async () => undefined,
+		sleep: async (milliseconds) => {
+			sleeps.push(milliseconds);
+		},
 	});
 
-	await client.generate({ prompt: "fox", quality: "auto", size: "auto" }, auth);
+	const result = await client.edit(
+		{
+			prompt: "keep the subject and replace only the background",
+			images: ["data:image/png;base64,aW1hZ2U="],
+			quality: "low",
+			size: "1024x1024",
+		},
+		auth,
+	);
 
+	assert.equal(result.base64, "ZWRpdGVk");
 	assert.equal(transport.requests.length, 2);
+	assert.equal(sleeps.length, 1);
+});
+
+test("CodexImagesClient stops after one repeated Cloudflare 520 retry", async () => {
+	const transport = new FakeTransport(
+		{ status: 520, headers: {}, body: "<html>first Cloudflare 520</html>" },
+		{ status: 520, headers: {}, body: "<html>second Cloudflare 520</html>" },
+		jsonResponse(200, { data: [{ b64_json: "dW51c2Vk" }] }),
+	);
+	const sleeps: number[] = [];
+	const client = new CodexImagesClient(transport, {
+		sleep: async (milliseconds) => {
+			sleeps.push(milliseconds);
+		},
+	});
+
+	await assert.rejects(
+		client.edit(
+			{
+				prompt: "edit",
+				images: ["data:image/png;base64,aW1hZ2U="],
+				quality: "low",
+				size: "1024x1024",
+			},
+			auth,
+		),
+		(error: unknown) =>
+			error instanceof ExtensionError &&
+			error.code === "BACKEND_UNAVAILABLE" &&
+			error.message.includes("HTTP 520") &&
+			error.message.includes("retried once"),
+	);
+	assert.equal(transport.requests.length, 2);
+	assert.equal(sleeps.length, 1);
 });
 
 test("CodexImagesClient does not retry ambiguous transport or malformed success failures", async (t) => {
@@ -322,9 +444,25 @@ test("CodexImagesClient does not retry ambiguous transport or malformed success 
 		);
 		assert.equal(transport.requests.length, 1);
 	});
+
+	await t.test("non-gateway 500", async () => {
+		const transport = new FakeTransport(
+			jsonResponse(500, {}),
+			jsonResponse(200, { data: [{ b64_json: "dW51c2Vk" }] }),
+		);
+		const client = new CodexImagesClient(transport);
+		await assert.rejects(
+			client.generate({ prompt: "fox", quality: "auto", size: "auto" }, auth),
+			(error: unknown) =>
+				error instanceof ExtensionError &&
+				error.code === "BACKEND_UNAVAILABLE" &&
+				error.message.includes("HTTP 500"),
+		);
+		assert.equal(transport.requests.length, 1);
+	});
 });
 
-test("CodexImagesClient cancels retry sleep immediately", async () => {
+test("CodexImagesClient cancels the production retry wait immediately", async () => {
 	const transport = new FakeTransport(
 		jsonResponse(
 			429,
@@ -333,22 +471,21 @@ test("CodexImagesClient cancels retry sleep immediately", async () => {
 		),
 	);
 	const controller = new AbortController();
-	const client = new CodexImagesClient(transport, {
-		sleep: async (_milliseconds, signal) => {
-			controller.abort();
-			signal?.throwIfAborted();
-		},
-	});
+	const client = new CodexImagesClient(transport);
+	const startedAt = Date.now();
+	const retrying = client.generate(
+		{ prompt: "fox", quality: "auto", size: "auto" },
+		auth,
+		controller.signal,
+	);
+	setTimeout(() => controller.abort(), 10);
 
 	await assert.rejects(
-		client.generate(
-			{ prompt: "fox", quality: "auto", size: "auto" },
-			auth,
-			controller.signal,
-		),
+		retrying,
 		(error: unknown) =>
 			error instanceof ExtensionError && error.code === "CANCELLED",
 	);
+	assert.ok(Date.now() - startedAt < 800);
 	assert.equal(transport.requests.length, 1);
 });
 

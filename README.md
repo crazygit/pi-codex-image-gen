@@ -41,13 +41,13 @@ pi install npm:@crazygit/pi-codex-image-gen
 Try a specific version without adding it to settings:
 
 ```bash
-pi -e npm:@crazygit/pi-codex-image-gen@0.2.1
+pi -e npm:@crazygit/pi-codex-image-gen@0.2.2
 ```
 
 ### Git
 
 ```bash
-pi install git:github.com/crazygit/pi-codex-image-gen@v0.2.1
+pi install git:github.com/crazygit/pi-codex-image-gen@v0.2.2
 ```
 
 Use the unpinned repository only when you intentionally want the latest commit:
@@ -159,6 +159,8 @@ includes small fields such as model, size, quality, and saved path.
   endpoints on `chatgpt.com`; redirects and unexpected destinations are
   rejected.
 - The request model is fixed to `gpt-image-2`.
+- Selected transient gateway failures are retried once with bounded backoff;
+  ambiguous transport failures and malformed success responses are not retried.
 - The flow mirrors the current built-in Codex CLI image path rather than the
   public API-key Images product.
 

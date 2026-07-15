@@ -15,15 +15,12 @@ const CODEX_GENERATIONS_ENDPOINT =
 const CODEX_EDITS_ENDPOINT =
 	"https://chatgpt.com/backend-api/codex/images/edits";
 const MAX_ATTEMPTS = 3;
+const MAX_TRANSIENT_SERVER_ATTEMPTS = 2;
 const MAX_RESPONSE_BODY_BYTES = 36 * 1024 * 1024;
 const TERMINAL_LIMIT_CODES =
 	/usage[_ ]limit[_ ]reached|usage[_ ]not[_ ]included|insufficient[_ ]quota|monthly[_ ]limit|billing[_ ]hard[_ ]limit/i;
 const MODERATION_CODES = /moderation|content_policy|safety/i;
-const EXPLICIT_TRANSIENT_CODES = new Set([
-	"server_overloaded",
-	"temporarily_unavailable",
-	"service_unavailable",
-]);
+const RETRYABLE_SERVER_STATUSES = new Set([502, 503, 504, 520, 522, 523, 524]);
 
 export interface CodexGenerateRequest {
 	prompt: string;
@@ -207,15 +204,14 @@ export class CodexImagesClient {
 			}
 
 			const backendError = parseErrorPayload(response.body);
-			const code = backendError.code ?? backendError.type ?? "";
-			const limitSignal = `${code} ${backendError.message ?? ""}`;
-			if (TERMINAL_LIMIT_CODES.test(limitSignal)) {
+			const backendSignal = `${backendError.code ?? ""} ${backendError.type ?? ""} ${backendError.message ?? ""}`;
+			if (TERMINAL_LIMIT_CODES.test(backendSignal)) {
 				throw new ExtensionError(
 					"USAGE_LIMIT",
 					"The Codex service reported that this account's current usage limit has been reached. Check Codex availability for the account and try again later.",
 				);
 			}
-			if (MODERATION_CODES.test(code)) {
+			if (MODERATION_CODES.test(backendSignal)) {
 				throw new ExtensionError(
 					"MODERATION_BLOCKED",
 					"The image request was blocked by the provider's safety checks. Revise the prompt and try again.",
@@ -223,12 +219,15 @@ export class CodexImagesClient {
 			}
 
 			const retryableRateLimit = response.status === 429;
-			const retryableUnavailable =
-				[502, 503, 504].includes(response.status) &&
-				EXPLICIT_TRANSIENT_CODES.has(code.toLowerCase());
+			const retryableUnavailable = RETRYABLE_SERVER_STATUSES.has(
+				response.status,
+			);
+			const maximumAttempts = retryableRateLimit
+				? MAX_ATTEMPTS
+				: MAX_TRANSIENT_SERVER_ATTEMPTS;
 			if (
 				(retryableRateLimit || retryableUnavailable) &&
-				attempt < MAX_ATTEMPTS
+				attempt < maximumAttempts
 			) {
 				const delay = retryDelayMs(response.headers, attempt);
 				try {
@@ -249,10 +248,11 @@ export class CodexImagesClient {
 				);
 			}
 			if (response.status >= 500) {
-				throw new ExtensionError(
-					"BACKEND_UNAVAILABLE",
-					"The Codex image service is temporarily unavailable. Ambiguous failures are not retried to avoid a duplicate image request.",
-				);
+				const message =
+					attempt > 1
+						? `The Codex image service remained unavailable after being retried once (HTTP ${response.status}).`
+						: `The Codex image service is temporarily unavailable (HTTP ${response.status}). This response was not retried to avoid a duplicate image request.`;
+				throw new ExtensionError("BACKEND_UNAVAILABLE", message);
 			}
 			throw new ExtensionError(
 				"INVALID_REQUEST",
