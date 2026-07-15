@@ -32,8 +32,6 @@ pi install npm:@crazygit/pi-codex-image-gen
 
 To try the package without adding it to settings, replace `pi install` with `pi -e`.
 
-> The npm package and `v0.2.0` tag are not published yet. Until the first release, use the unpinned Git installation or the local development instructions below.
-
 ## Usage
 
 Ask Pi naturally, for example:
