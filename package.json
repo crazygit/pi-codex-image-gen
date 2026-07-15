@@ -1,0 +1,60 @@
+{
+  "name": "@crazygit/pi-codex-image-gen",
+  "version": "0.2.0",
+  "description": "Generate or edit PNG images in Pi using a ChatGPT Plus/Pro Codex subscription.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "codex",
+    "image-generation",
+    "image-editing"
+  ],
+  "homepage": "https://github.com/crazygit/pi-codex-image-gen#readme",
+  "bugs": {
+    "url": "https://github.com/crazygit/pi-codex-image-gen/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crazygit/pi-codex-image-gen.git"
+  },
+  "files": [
+    "index.ts",
+    "src/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts",
+    "prepack": "npm run check && npm test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.80.6",
+    "@earendil-works/pi-coding-agent": "0.80.6",
+    "@types/node": "^24.0.0",
+    "typebox": "1.1.38",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
