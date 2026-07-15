@@ -138,7 +138,7 @@ test("FetchHttpTransport stops reading an excessive streamed response", async ()
 	}
 });
 
-test("CodexImagesClient calls only the standalone subscription Images endpoint", async () => {
+test("CodexImagesClient calls only the standalone Codex Images endpoint", async () => {
 	const transport = new FakeTransport(
 		jsonResponse(200, {
 			created: 1778832973,
@@ -226,7 +226,7 @@ test("CodexImagesClient sends reference images to the standalone edits endpoint"
 	assert.equal(result.base64, "ZWRpdGVk");
 });
 
-test("CodexImagesClient reports terminal subscription limits without retrying", async () => {
+test("CodexImagesClient reports terminal provider limits without retrying", async () => {
 	const transport = new FakeTransport(
 		jsonResponse(429, {
 			error: { code: "usage_limit_reached", message: "private backend detail" },

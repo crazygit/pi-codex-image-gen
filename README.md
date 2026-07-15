@@ -1,28 +1,36 @@
-# Pi Codex Image Generation
+# Pi Codex Image Gen
 
-A [Pi package](https://pi.dev/docs/latest/packages) that registers the `codex_generate_image` tool and bundles the `imagegen` skill. It generates or edits one PNG through the current standalone Codex Images endpoints using the ChatGPT Plus/Pro login managed by Pi—no `OPENAI_API_KEY` is required.
+[![npm version](https://img.shields.io/npm/v/%40crazygit%2Fpi-codex-image-gen)](https://www.npmjs.com/package/@crazygit/pi-codex-image-gen)
+[![GitHub release](https://img.shields.io/github/v/release/crazygit/pi-codex-image-gen)](https://github.com/crazygit/pi-codex-image-gen/releases)
+[![license](https://img.shields.io/npm/l/%40crazygit%2Fpi-codex-image-gen)](LICENSE)
+
+Generate and edit PNG images in [Pi](https://pi.dev/) through the same
+ChatGPT-backed Codex Images flow used by the built-in Codex CLI experience.
+Authentication comes from the ChatGPT Plus/Pro Codex login already managed by
+Pi. **NO `OPENAI_API_KEY` is required.**
+
+> Image requests follow the same provider-managed service access and usage
+> policies as Codex CLI. This project does not define an additional allowance
+> or limit, and provider behavior may change independently of this package.
+
+## Highlights
+
+- Generate one PNG from a natural-language prompt.
+- Edit or derive from one to five local PNG, JPEG, or WebP images.
+- Preview every result inline and save it automatically by default.
+- Require interactive approval before local reference images leave the machine.
+- Keep OAuth tokens, backend responses, and image bytes out of result metadata.
+- Bound input dimensions, request sizes, response sizes, and retries.
+- Save atomically without silently overwriting existing files.
+- Bundle an `imagegen` skill that activates only for explicit image requests.
 
 ## Requirements
 
-- Pi `0.80.6` or compatible
+- Pi `0.80.6` or a compatible later release
 - Node.js 22.19+
 - An active ChatGPT Plus/Pro Codex login (`/login` → ChatGPT Plus/Pro)
 
-Both image generation and editing consume Codex subscription image quota.
-
 ## Installation
-
-### Git
-
-```bash
-pi install git:github.com/crazygit/pi-codex-image-gen
-```
-
-Pin a release tag for reproducible installs:
-
-```bash
-pi install git:github.com/crazygit/pi-codex-image-gen@v0.2.0
-```
 
 ### npm
 
@@ -30,53 +38,141 @@ pi install git:github.com/crazygit/pi-codex-image-gen@v0.2.0
 pi install npm:@crazygit/pi-codex-image-gen
 ```
 
-To try the package without adding it to settings, replace `pi install` with `pi -e`.
+Try a specific version without adding it to settings:
+
+```bash
+pi -e npm:@crazygit/pi-codex-image-gen@0.2.1
+```
+
+### Git
+
+```bash
+pi install git:github.com/crazygit/pi-codex-image-gen@v0.2.1
+```
+
+Use the unpinned repository only when you intentionally want the latest commit:
+
+```bash
+pi install git:github.com/crazygit/pi-codex-image-gen
+```
 
 ## Usage
 
-Ask Pi naturally, for example:
+### Start with natural language
+
+In normal use, you do **not** need to call the tool manually or write JSON.
+Describe the image you want, and include only the options that matter to you.
+The bundled `imagegen` skill maps the request to `codex_generate_image`.
+
+Make a simple request:
 
 > Generate a square watercolor fox avatar with a pale blue background.
 
-> Edit `assets/fox.png`: keep the fox unchanged and replace only the background with a sunset.
+Choose the shape, quality, and destination explicitly:
 
-The bundled `imagegen` skill instructs Pi to call `codex_generate_image` only for explicit generation or editing requests.
+> Generate a high-quality landscape hero image of a mountain observatory at
+> night. Use a 1536x1024 canvas and save it to assets/observatory.png.
 
-Tool parameters:
+Edit a local image while preserving explicit invariants:
 
-- `prompt` (required)
-- `referencedImagePaths` (optional array of 1–5 local PNG, JPEG, or WebP paths; enables edit/reference mode)
-- `outputPath` (optional exact `.png` destination)
-- `save`: `auto` (default), `none`, `project`, or `global`
-- `size`: `auto`, `1024x1024`, `1536x1024`, or `1024x1536`
-- `quality`: `auto`, `low`, `medium`, or `high`
+> Edit assets/fox.png. Keep the fox's pose, colors, and position unchanged;
+> replace only the background with a sunset. Save the result to
+> assets/fox-sunset.png.
 
-When `referencedImagePaths` is omitted, the tool generates through `/images/generations`. When paths are present, it preserves their order and edits or derives from them through `/images/edits`. Before any local image bytes are read or uploaded, Pi displays the resolved paths and requires interactive confirmation. Headless runs reject local reference uploads.
+Preview without saving:
 
-`save=auto` writes to `<cwd>/.pi/generated-images/<session-id>/` for a trusted project, otherwise to `<agent-dir>/generated-images/<session-id>/`. Existing files are never silently overwritten. Absolute destinations outside the trusted project or Pi agent directory require interactive approval.
+> Generate a low-quality square draft of a blue app icon. Preview it without
+> saving.
 
-The tool returns concise text plus an inline Pi image block. Result `details` contains only small metadata such as model, size, quality, and saved path—never OAuth tokens, auth headers, raw backend responses, or base64 image bytes.
+Pi infers the tool arguments from these instructions. If you do not mention a
+size or quality, the extension uses provider defaults. Every successful result
+is previewed inline and, by default, also saved automatically. Ask to preview
+without saving when you do not want a local file.
 
-## Safety and protocol behavior
+### Advanced: tool arguments
 
-- OAuth is resolved through `ctx.modelRegistry.getApiKeyAndHeaders()`; `auth.json` is never read directly.
-- The token is sent only to `https://chatgpt.com/backend-api/codex/images/generations` or `https://chatgpt.com/backend-api/codex/images/edits`; redirects are rejected.
+<details>
+<summary>View the structured arguments Pi sends to the extension</summary>
+
+These fields are the internal contract between Pi and the extension. Most users
+never need to set them manually.
+
+| Parameter | Default | Purpose |
+| --- | --- | --- |
+| `prompt` | Required | Final image description or edit instruction. |
+| `referencedImagePaths` | Omitted | One to five local PNG, JPEG, or WebP paths; supplying them selects edit mode. |
+| `outputPath` | Omitted | Requested `.png` destination; safety checks or name collisions may adjust the final path. |
+| `save` | `auto` | Automatic save, preview only, project storage, or Pi agent storage. |
+| `size` | `auto` | `1024x1024`, `1536x1024`, or `1024x1536`. |
+| `quality` | `auto` | `low`, `medium`, or `high`. |
+
+**Size values**
+
+| Value | Shape | Typical use |
+| --- | --- | --- |
+| `auto` | Provider-selected | No strict layout requirement. |
+| `1024x1024` | Square | Icons, avatars, product tiles, social posts. |
+| `1536x1024` | Landscape | Hero images, banners, scenes, presentation art. |
+| `1024x1536` | Portrait | Posters, covers, character art, mobile layouts. |
+
+**Save values**
+
+| Value | Behavior |
+| --- | --- |
+| `auto` | Use the trusted project when available; otherwise use the Pi agent directory. |
+| `project` | Save under `<cwd>/.pi/generated-images/<session-id>/`; requires a trusted project. |
+| `global` | Save under `<agent-dir>/generated-images/<session-id>/`. |
+| `none` | Return the inline preview without writing a file. |
+
+`outputPath` takes precedence over the automatic `project` or `global` location
+and cannot be combined with `save: "none"`. Relative paths require a trusted
+project and must stay inside it. An absolute path outside the trusted project or
+Pi agent directory requires interactive approval and therefore fails in
+headless mode. Existing files are never silently overwritten; a collision
+receives a numeric suffix, which is reflected in the returned `savedPath`.
+
+</details>
+
+### Reference-image approval
+
+Supplying `referencedImagePaths` switches from generation to editing. Before
+reading or uploading local bytes, Pi displays the resolved paths and asks for
+interactive confirmation. Headless runs reject reference uploads, and relative
+paths require a trusted project.
+
+Direct selection of attached or recent conversation images is not implemented;
+provide a local path instead.
+
+### Result
+
+Every successful call returns an inline Pi image block. Saving is enabled by
+default, so the result normally also includes the final `savedPath`. A request
+to preview without saving returns only the inline image. Result metadata
+includes small fields such as model, size, quality, and saved path.
+
+## How it works
+
+- Pi resolves the existing Codex login through
+  `ctx.modelRegistry.getApiKeyAndHeaders()`; the package never reads
+  `auth.json` directly.
+- Requests are restricted to the current Codex Images generation and edit
+  endpoints on `chatgpt.com`; redirects and unexpected destinations are
+  rejected.
 - The request model is fixed to `gpt-image-2`.
-- Reference inputs are limited to five regular files. Relative paths require a trusted project; path identity is captured before approval and revalidated through an `O_NOFOLLOW` file handle before reading.
-- Input images are decoded locally, normalized only when required for the
-  request budget, and held in memory only for the request. Source files are
-  limited to 20 MiB each and 50 MiB combined. Headers are checked before
-  decoding, with a 16,384-pixel per-axis and 40-megapixel limit.
-- Backend response bodies are capped at 36 MiB while streaming. Returned data
-  must be canonical base64, no larger than 25 MiB decoded, and have a PNG
-  signature before it is saved or previewed.
-- Saves revalidate the approved root and directory identity at mutation time, then use Pi's real-target mutation queue, a sibling temporary file, `fsync`, and an atomic no-replace hard-link install.
-- Terminal quota errors are not retried. Selected non-terminal responses may retry up to three total attempts. Ambiguous failures are not retried to avoid duplicate quota consumption.
-- Escape/abort cancels fetches and retry waits.
+- The flow mirrors the current built-in Codex CLI image path rather than the
+  public API-key Images product.
 
-Pi packages run with the current user's system permissions. Review third-party package source before installing it.
+The ChatGPT-backed Codex Images endpoints are not a public stable API. Provider
+changes may require a package update.
 
-## Local development
+## Limitations
+
+The current release creates one PNG at a time. It does not support masks,
+batches, direct conversation-image selection, API-key fallback,
+Responses-tool compatibility, alternate image backends, JPEG/WebP output,
+native transparency controls, or telemetry.
+
+## Development
 
 ```bash
 git clone https://github.com/crazygit/pi-codex-image-gen.git
@@ -84,44 +180,29 @@ cd pi-codex-image-gen
 npm ci
 npm run check
 npm test
+npm pack --dry-run
 ```
 
-To use an existing local checkout without installing it:
+Load a local checkout without changing Pi settings:
 
 ```bash
 pi -e /absolute/path/to/pi-codex-image-gen
 ```
 
-This loads both the extension and bundled skill without modifying Pi settings.
-Automated tests inject an in-memory HTTP transport and never contact OpenAI or
-consume image quota.
+Automated tests use in-memory transports and do not contact OpenAI or make real
+image requests.
 
-### Migrating from the legacy global extension
+## Contributing
 
-If `~/.pi/agent/extensions/codex-image-gen` is still enabled, loading this
-package normally would register `codex_generate_image` twice. Keep the old
-files in place and isolate the new package for testing:
+Issues and focused pull requests are welcome. Before opening a pull request:
 
-```bash
-pi --no-extensions -e /absolute/path/to/pi-codex-image-gen
-```
+1. Keep changes scoped to this package.
+2. Add or update tests for behavior changes.
+3. Run `npm run check` and `npm test`.
+4. Inspect release contents with `npm pack --dry-run`.
 
-`--no-extensions` disables automatic extension discovery for that process;
-the explicit `-e` package still loads. After validating the package, use
-`pi config` to disable the legacy extension before installing or enabling this
-package in normal sessions. Disabling it does not delete its files.
-
-To inspect the npm release contents:
-
-```bash
-npm pack --dry-run
-```
-
-## Current limitations
-
-Edits require explicit local file paths; selecting attached or recent conversation images is not implemented. Masks, batches, API-key fallback, Responses-tool compatibility, alternate image backends, JPEG/WebP output, native transparency controls, and telemetry are not supported.
-
-The ChatGPT Codex Images backend is not a public stable API. This implementation follows the current official Codex standalone Images strategy; future backend changes may require an update.
+Report bugs and compatibility changes through
+[GitHub Issues](https://github.com/crazygit/pi-codex-image-gen/issues).
 
 ## License
 

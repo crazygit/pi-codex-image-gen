@@ -87,11 +87,10 @@ export function createCodexImageExtension(
 			name: "codex_generate_image",
 			label: "Codex Generate Image",
 			description:
-				"Generate or edit one PNG with gpt-image-2 using the user's ChatGPT Plus/Pro Codex subscription quota. Provide referencedImagePaths to edit or derive from one to five local PNG, JPEG, or WebP images.",
-			promptSnippet:
-				"Generate or edit one PNG using Codex subscription image quota",
+				"Generate or edit one PNG with gpt-image-2 through the ChatGPT-backed Codex Images flow used by Codex CLI. Provide referencedImagePaths to edit or derive from one to five local PNG, JPEG, or WebP images.",
+			promptSnippet: "Generate or edit one PNG through the Codex Images flow",
 			promptGuidelines: [
-				"Use codex_generate_image only when the user clearly requests a new raster image or an edit of existing raster images; it consumes Codex subscription image quota.",
+				"Use codex_generate_image only when the user clearly requests a new raster image or an edit of existing raster images; it sends a real image request through the user's Codex login.",
 				"Pass referencedImagePaths to codex_generate_image only for local images the user explicitly wants uploaded to Codex as edit/reference inputs.",
 				"Pass outputPath to codex_generate_image only when the user requests a destination.",
 			],
@@ -134,7 +133,7 @@ export function createCodexImageExtension(
 					}
 					referenceUploadApproved = await ctx.ui.confirm(
 						`Upload ${referenceImages.count} local image${referenceImages.count === 1 ? "" : "s"} to Codex?`,
-						`These files will leave this machine and consume Codex subscription quota:\n${referenceImages.displayPaths.join("\n")}`,
+						`These files will leave this machine and be sent to Codex using the current Codex login:\n${referenceImages.displayPaths.join("\n")}`,
 					);
 					if (!referenceUploadApproved) throw toolError(cancelledError());
 				}
@@ -161,8 +160,8 @@ export function createCodexImageExtension(
 						{
 							type: "text",
 							text: referenceImages
-								? "Editing one PNG with Codex subscription quota..."
-								: "Generating one PNG with Codex subscription quota...",
+								? "Editing one PNG through Codex Images..."
+								: "Generating one PNG through Codex Images...",
 						},
 					],
 					details: {},

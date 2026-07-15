@@ -1,6 +1,6 @@
 {
   "name": "@crazygit/pi-codex-image-gen",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Generate or edit PNG images in Pi using a ChatGPT Plus/Pro Codex subscription.",
   "type": "module",
   "license": "MIT",

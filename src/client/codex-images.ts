@@ -198,7 +198,7 @@ export class CodexImagesClient {
 				if (signal?.aborted || isAbortError(error)) throw cancelledError();
 				throw new ExtensionError(
 					"BACKEND_UNAVAILABLE",
-					"The Codex image service could not be reached. The request was not retried to avoid duplicate quota usage.",
+					"The Codex image service could not be reached. The request was not retried to avoid a duplicate image request.",
 				);
 			}
 
@@ -212,7 +212,7 @@ export class CodexImagesClient {
 			if (TERMINAL_LIMIT_CODES.test(limitSignal)) {
 				throw new ExtensionError(
 					"USAGE_LIMIT",
-					"The ChatGPT Codex image usage limit has been reached. Check your plan usage and try again after it resets.",
+					"The Codex service reported that this account's current usage limit has been reached. Check Codex availability for the account and try again later.",
 				);
 			}
 			if (MODERATION_CODES.test(code)) {
@@ -251,7 +251,7 @@ export class CodexImagesClient {
 			if (response.status >= 500) {
 				throw new ExtensionError(
 					"BACKEND_UNAVAILABLE",
-					"The Codex image service is temporarily unavailable. Ambiguous failures are not retried to avoid duplicate quota usage.",
+					"The Codex image service is temporarily unavailable. Ambiguous failures are not retried to avoid a duplicate image request.",
 				);
 			}
 			throw new ExtensionError(
@@ -274,7 +274,7 @@ function parseSuccessfulResponse(body: string): GeneratedImageData {
 	} catch {
 		throw new ExtensionError(
 			"NO_IMAGE",
-			"The Codex image service returned an unreadable response. The request was not retried to avoid duplicate quota usage.",
+			"The Codex image service returned an unreadable response. The request was not retried to avoid a duplicate image request.",
 		);
 	}
 
